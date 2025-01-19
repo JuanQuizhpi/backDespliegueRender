@@ -7,16 +7,15 @@ from firebase_admin import credentials, firestore
 from flask_cors import CORS
 import os
 import requests
+import json
 
 # URLs de los archivos en Google Drive
-FIREBASE_CREDENTIALS_URL = "https://drive.google.com/uc?id=1Ogevx94z4uCyA-QwIbr__7ym16gy9Exw"
 PIPELINE_URL = "https://drive.google.com/uc?id=1ME6it2alIsV-kvC47HJYzY3eEnXJAuzp"
 MODEL_URL = "https://drive.google.com/uc?id=1HfAlgRogdOLnCnHHmoAqbaFotHuQu4Cg"
 
 # Rutas donde se guardarán los archivos descargados
-FIREBASE_CREDENTIALS_PATH = "firebase-key.json"
-PIPELINE_PATH = "models/pipePreprocesadores.pickle"
-MODEL_PATH = "models/modeloRF.pickle"
+PIPELINE_PATH = "/tmp/pipePreprocesadores.pickle"
+MODEL_PATH = "/tmp/modeloRF.pickle"
 
 # Función para descargar archivos desde Google Drive
 def download_file(url, destination):
@@ -28,11 +27,7 @@ def download_file(url, destination):
     else:
         print(f"❌ Error al descargar {destination}, código: {response.status_code}")
 
-# Crear la carpeta models si no existe
-os.makedirs("models", exist_ok=True)
-
-# Descargar los archivos necesarios
-download_file(FIREBASE_CREDENTIALS_URL, FIREBASE_CREDENTIALS_PATH)
+# Descargar modelos en cada arranque
 download_file(PIPELINE_URL, PIPELINE_PATH)
 download_file(MODEL_URL, MODEL_PATH)
 
@@ -40,11 +35,16 @@ download_file(MODEL_URL, MODEL_PATH)
 app = Flask(__name__)
 CORS(app)  # Habilita CORS para todas las rutas
 
-# Configurar Firebase
-cred = credentials.Certificate(FIREBASE_CREDENTIALS_PATH)
-firebase_admin.initialize_app(cred)
-db = firestore.client()
-print("✅ Firebase inicializado correctamente.")
+# Configurar Firebase usando variables de entorno
+firebase_credentials_json = os.environ.get("FIREBASE_CREDENTIALS")
+if firebase_credentials_json:
+    firebase_credentials = json.loads(firebase_credentials_json)
+    cred = credentials.Certificate(firebase_credentials)
+    firebase_admin.initialize_app(cred)
+    db = firestore.client()
+    print("✅ Firebase inicializado correctamente.")
+else:
+    print("❌ No se encontró la variable de entorno FIREBASE_CREDENTIALS")
 
 # Cargar el modelo y el pipeline desde los archivos descargados
 with open(MODEL_PATH, "rb") as model_file:
@@ -115,4 +115,5 @@ def get_prediction_by_id(id):
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
